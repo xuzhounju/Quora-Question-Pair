@@ -9,7 +9,10 @@ Created on Tue Nov 14 19:19:53 2017
 import csv
 from collections import defaultdict
 import math
-
+import gensim
+from sklearn import svm
+import numpy as np
+import time
 
 def readTrainFile():
     f= open('../train.csv','rb')
@@ -34,6 +37,18 @@ def readTestFile():
     rawDataMatrix=rawDataMatrix[1:]
 
     return rawDataMatrix
+
+def word2vecTrain(rawDataMatrix,count,dimension):
+    print "build up word2vec model..."
+    start=time.time()
+    sentences= []
+    for pair in rawDataMatrix:
+        sentences.append(pair[3].split())
+        sentences.append(pair[4].split())
+    model = gensim.models.Word2Vec(sentences, min_count=count,size = dimension)
+    end=time.time()
+    print "finish the building, time took:",end-start
+    return model
     
 
 def dictAllWords(rawDataMatrix):
@@ -81,8 +96,37 @@ def avgPerceptronTrain(example,r,numpass):
             s = s+(t-1)*r*g
             t+=1
         
-    return theta -1.0/t*s                
+    return theta -1.0/t*s     
 
+def word2vecSentenceDistance(a,b,model):
+    sentenceA = a.split()
+    sentenceB = b.split()
+    vectorA =np.copy(model[sentenceA[0]])
+    vectorB =np.copy( model[sentenceB[0]]) 
+    for word in sentenceA[1:]:
+        vectorA += model[word]
+    for word in sentenceB[1:]:
+        vectorB += model[word]
+    return vectorA/len(vectorA)-vectorB/len(vectorB)
+
+def word2vecSVMTrain(rawDataMatrix,model):
+    num=0
+    start = time.time()
+    print "start svm training..."
+    x=[]
+    y=[]
+    for pair in rawDataMatrix:
+        num=num+1
+        x.append(word2vecSentenceDistance(pair[3],pair[4],model))
+        y.append(int(pair[-1]))
+        if num%10000 ==0:
+            print num/10000
+    clf= svm.SVC()
+    clf.fit(x,y)
+    end= time.time()
+    print "finish svm training, time took:",end - start
+    return clf
+    
 def validation(example,theta):
     num= 0.0 
     total = len(example)
@@ -96,6 +140,26 @@ def validation(example,theta):
         if gold == predict:
             num+=1.0
     print 'the accuracy is :', num/total
+    
+
+def word2vecSVMValidation(example,clf,model):
+    print "start svm validation..."
+    start = time.time()
+    num=0.0
+    count = 0
+    total= len(example)
+    for pair in example:
+        count+=1
+        if count%10000==0:
+            print count/10000
+        gold = int(pair[-1])
+        if clf.predict([word2vecSentenceDistance(pair[3],pair[4],model)])[0]==gold:
+            num+=1.0
+    end = time.time()
+    print "time took:", end - start
+    print 'the accuracy of svm is :',num/total
+
+
 
 def test(example,theta):
     result=[]
@@ -115,7 +179,13 @@ def test(example,theta):
             
 
 rawDataMatrix =  readTrainFile()
-threthod =avgPerceptronTrain(rawDataMatrix,0.2,10)
-validation(rawDataMatrix,threthod)
-testData = readTestFile()
-result = test(testData,threthod)
+print len(rawDataMatrix)
+model=word2vecTrain(rawDataMatrix,1,20)
+clf = word2vecSVMTrain(rawDataMatrix,model)
+word2vecSVMValidation(rawDataMatrix,clf,model)
+
+
+#threthod =avgPerceptronTrain(rawDataMatrix,0.2,10)
+#validation(rawDataMatrix,threthod)
+#testData = readTestFile()
+#result = test(testData,threthod)
