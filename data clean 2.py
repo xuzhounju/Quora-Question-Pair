@@ -13,6 +13,7 @@ import gensim
 from sklearn import svm
 import numpy as np
 import time
+import re
 
 def readTrainFile():
     f= open('../train.csv','rb')
@@ -25,8 +26,70 @@ def readTrainFile():
     for pair in rawDataMatrix:
         if len(pair[3])==0 or len(pair[4])==0:
             rawDataMatrix.remove(pair)
+        pair[3]= pair[3].split()
+        pair[4]= pair[4].split()
     return rawDataMatrix
 
+def dataClean(rawDataMatrix):
+    '''
+    Convert words to lower case and get rid of punctuation.
+    '''
+    delims = ',.?!:;'
+    for pair in rawDataMatrix:
+        pair[3] = map(lambda t: t.lower(), pair[3])
+        pair[4]= map(lambda t: t.lower(), pair[4])
+        for i in range(len(pair[3])):
+            pair[3][i]=pair[3][i].strip(delims)
+        for i in range(len(pair[4])):
+            pair[4][i]=pair[4][i].strip(delims)
+    
+    return rawDataMatrix
+
+
+def dataClean2(rawDataMatrix):
+    for pair in rawDataMatrix:
+        pair[3]=" ".join(pair[3])
+        pair[4]=" ".join(pair[4])
+        pair[3]=cleartext(pair[3])
+        pair[4]=cleartext(pair[4])
+        pair[3]=pair[3].split()
+        pair[4]=pair[4].split()
+    return rawDataMatrix
+
+
+
+def cleartext(text):
+    text = re.sub(r"[^A-Za-z0-9^,!.\/'+-=]", " ", text)
+    text = re.sub(r"what's", "what is ", text)
+    text = re.sub(r"\'s", " ", text)
+    text = re.sub(r"\'ve", " have ", text)
+    text = re.sub(r"can't", "cannot ", text)
+    text = re.sub(r"n't", " not ", text)
+    text = re.sub(r"i'm", "i am ", text)
+    text = re.sub(r"\'re", " are ", text)
+    text = re.sub(r"\'d", " would ", text)
+    text = re.sub(r"\'ll", " will ", text)
+    text = re.sub(r",", " ", text)
+    text = re.sub(r"\.", " ", text)
+    text = re.sub(r"!", " ! ", text)
+    text = re.sub(r"\/", " ", text)
+    text = re.sub(r"\^", " ^ ", text)
+    text = re.sub(r"\+", " + ", text)
+    text = re.sub(r"\-", " - ", text)
+    text = re.sub(r"\=", " = ", text)
+    text = re.sub(r"'", " ", text)
+    text = re.sub(r"(\d+)(k)", r"\g<1>000", text)
+    text = re.sub(r":", " : ", text)
+    text = re.sub(r" e g ", " eg ", text)
+    text = re.sub(r" b g ", " bg ", text)
+    text = re.sub(r" u s ", " american ", text)
+    text = re.sub(r"\0s", "0", text)
+    text = re.sub(r" 9 11 ", "911", text)
+    text = re.sub(r"e - mail", "email", text)
+    text = re.sub(r"j k", "jk", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text
+        
 
 def readTestFile():
     f=open('../test.csv','rb')
@@ -43,8 +106,8 @@ def word2vecTrain(rawDataMatrix,count,dimension):
     start=time.time()
     sentences= []
     for pair in rawDataMatrix:
-        sentences.append(pair[3].split())
-        sentences.append(pair[4].split())
+        sentences.append(pair[3])
+        sentences.append(pair[4])
     model = gensim.models.Word2Vec(sentences, min_count=count,size = dimension)
     end=time.time()
     print "finish the building, time took:",end-start
@@ -54,18 +117,18 @@ def word2vecTrain(rawDataMatrix,count,dimension):
 def dictAllWords(rawDataMatrix):
     allWords=defaultdict(float)
     for pair in rawDataMatrix:
-        for word in pair[3].split():
+        for word in pair[3]:
             allWords[word]+=1.0
-        for word in pair[4].split():
+        for word in pair[4]:
             allWords[word]+=1.0
     
 
-def baselineCosineSimilarity(Q1,Q2):
+def baselineCosineSimilarity(Q1,Q2,model):
     Q1_dict = defaultdict(float)
     Q2_dict = defaultdict(float)
-    for word in Q1.split():
+    for word in Q1:
         Q1_dict[word]+=1.0
-    for word in Q2.split():
+    for word in Q2:
         Q2_dict[word]+=1.0
     ab=0.0
     a0=0.0
@@ -80,14 +143,29 @@ def baselineCosineSimilarity(Q1,Q2):
         b0=1
     return ab/math.sqrt(a0)/math.sqrt(b0)
 
-def avgPerceptronTrain(example,r,numpass):
+
+def word2vecCosineSimilarity(s1,s2,model):
+    Q1,Q2 = word2vecSentence2Vec(s1,s2,model)
+    ab = np.dot(Q1,Q2)
+    a0 = math.sqrt(np.dot(Q1,Q1))
+    b0 = math.sqrt(np.dot(Q2,Q2))
+    if b0 == 0.0 or a0 == 0.0:
+        a0 = 1.0
+        b0 = 1.0
+    return ab/a0/b0
+
+def avgPerceptronTrain(example,r,numpass,cosineSimilarity,model):
+    print 'start training...'
     t=1.0
     theta=0.5
     s=0.0
+    count = 100000*numpass
     for pair in example:
+        if (t-1)%count==0:
+            print 'trained ', (t-1)/count,'*100k pairs'
         gold = int(pair[-1])
         for iteration in range(numpass):
-            if baselineCosineSimilarity(pair[3],pair[4])>theta:
+            if cosineSimilarity(pair[3],pair[4],model)>theta:
                 predict = 1.0
             else:
                 predict = 0.0
@@ -95,45 +173,52 @@ def avgPerceptronTrain(example,r,numpass):
             theta = theta + r* g
             s = s+(t-1)*r*g
             t+=1
-        
+    print 'finished training.learning rate:',r,' ;numpass:',numpass
     return theta -1.0/t*s     
 
-def word2vecSentenceDistance(a,b,model):
-    sentenceA = a.split()
-    sentenceB = b.split()
+def word2vecSentence2Vec(a,b,model):
+    sentenceA = a
+    sentenceB = b
     vectorA =np.copy(model[sentenceA[0]])
     vectorB =np.copy( model[sentenceB[0]]) 
     for word in sentenceA[1:]:
         vectorA += model[word]
     for word in sentenceB[1:]:
         vectorB += model[word]
-    return vectorA/len(vectorA)-vectorB/len(vectorB)
+    return vectorA/len(vectorA),vectorB/len(vectorB)
 
-def word2vecSVMTrain(rawDataMatrix,model):
-    num=0
-    start = time.time()
-    print "start svm training..."
-    x=[]
-    y=[]
-    for pair in rawDataMatrix:
-        num=num+1
-        x.append(word2vecSentenceDistance(pair[3],pair[4],model))
-        y.append(int(pair[-1]))
-        if num%10000 ==0:
-            print num/10000
-    clf= svm.SVC()
-    clf.fit(x,y)
-    end= time.time()
-    print "finish svm training, time took:",end - start
-    return clf
+#def word2vecSVMTrain(rawDataMatrix,model):
+#    num=0
+#    start = time.time()
+#    print "start svm training..."
+#    x=[]
+#    y=[]
+#    for pair in rawDataMatrix:
+#        num=num+1
+#        x.append(word2vecSentenceDistance(pair[3],pair[4],model))
+#        y.append(int(pair[-1]))
+#        if num%10000 ==0:
+#            print num/10000
+#   clf= svm.SVC()
+#    clf.fit(x,y)
+#    end= time.time()
+#    print "finish svm training, time took:",end - start
+#    return clf
     
-def validation(example,theta):
+
+
+
+def validation(example,theta,cosineSimilarity,model):
+    print 'start validation...'
     num= 0.0 
     total = len(example)
+    count = 0
     for pair in example:
+        count+=1
         gold = int(pair[-1])
-
-        if baselineCosineSimilarity(pair[3],pair[4])>theta:
+        if count % 100000 == 0:
+            print 'tested ', count/100000,'*100k pairs'
+        if cosineSimilarity(pair[3],pair[4],model)>theta:
             predict = 1.0
         else:
             predict = 0.0
@@ -142,6 +227,8 @@ def validation(example,theta):
     print 'the accuracy is :', num/total
     
 
+    
+'''
 def word2vecSVMValidation(example,clf,model):
     print "start svm validation..."
     start = time.time()
@@ -158,7 +245,7 @@ def word2vecSVMValidation(example,clf,model):
     end = time.time()
     print "time took:", end - start
     print 'the accuracy of svm is :',num/total
-
+'''
 
 
 def test(example,theta):
@@ -179,13 +266,43 @@ def test(example,theta):
             
 
 rawDataMatrix =  readTrainFile()
+rawDataMatrix_copy = []
+for pair in rawDataMatrix:
+    rawDataMatrix_copy.append(pair)
+
 print len(rawDataMatrix)
-model=word2vecTrain(rawDataMatrix,1,20)
-clf = word2vecSVMTrain(rawDataMatrix,model)
-word2vecSVMValidation(rawDataMatrix,clf,model)
+model=word2vecTrain(rawDataMatrix,1,100)
+#clf = word2vecSVMTrain(rawDataMatrix,model)
+#word2vecSVMValidation(rawDataMatrix,clf,model)
 
 
-#threthod =avgPerceptronTrain(rawDataMatrix,0.2,10)
-#validation(rawDataMatrix,threthod)
+threthod1 =avgPerceptronTrain(rawDataMatrix,0.1,10,baselineCosineSimilarity,model)
+validation(rawDataMatrix,threthod1,baselineCosineSimilarity,model)
+
+threthod2 = avgPerceptronTrain(rawDataMatrix,0.1,10,word2vecCosineSimilarity,model)
+validation(rawDataMatrix,threthod2,word2vecCosineSimilarity,model)
+
+
+cleanedDataMatrix = dataClean(rawDataMatrix)
+model2 = word2vecTrain(cleanedDataMatrix,1,100)
+
+threthod3 = avgPerceptronTrain(cleanedDataMatrix,0.1,10,baselineCosineSimilarity,model2)
+validation(cleanedDataMatrix,threthod3,baselineCosineSimilarity,model2)
+
+threthod4 = avgPerceptronTrain(cleanedDataMatrix,0.1,10,word2vecCosineSimilarity,model2)
+validation(cleanedDataMatrix,threthod4,word2vecCosineSimilarity,model2)
+
+
+
+cleanedDataMatrix2 = dataClean2(rawDataMatrix_copy)
+model3 = word2vecTrain(cleanedDataMatrix2,1,100)
+
+threthod5 = avgPerceptronTrain(cleanedDataMatrix2,0.1,10,baselineCosineSimilarity,model3)
+validation(cleanedDataMatrix,threthod5,baselineCosineSimilarity,model3)
+
+threthod6 = avgPerceptronTrain(cleanedDataMatrix2,0.1,10,word2vecCosineSimilarity,model3)
+validation(cleanedDataMatrix,threthod6,word2vecCosineSimilarity,model3)
+
+
 #testData = readTestFile()
 #result = test(testData,threthod)
