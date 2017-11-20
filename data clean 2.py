@@ -48,12 +48,12 @@ def dataClean(rawDataMatrix):
     return rawDataMatrix
 
 
-def dataClean2(rawDataMatrix):
+def dataClean2(rawDataMatrix,stem_word=False):
     for pair in rawDataMatrix:
         pair[3]=" ".join(pair[3])
         pair[4]=" ".join(pair[4])
-        pair[3]=cleartext(pair[3])
-        pair[4]=cleartext(pair[4])
+        pair[3]=cleartext(pair[3],stem_word)
+        pair[4]=cleartext(pair[4],stem_word)
         pair[3]=pair[3].split()
         pair[4]=pair[4].split()
     return rawDataMatrix
@@ -293,7 +293,7 @@ cleanedDataMatrix = dataClean(rawDataMatrix_copy2)
 model2 = word2vecTrain(cleanedDataMatrix,1,100)
 cleanedDataMatrix2 = dataClean2(rawDataMatrix_copy)
 model3 = word2vecTrain(cleanedDataMatrix2,1,100)
-cleanedDataMatrix3 = dataClean2(rawDataMatrix_copy3,True)
+cleanedDataMatrix3 = dataClean2(rawDataMatrix_copy3,stem_words=True)
 model4 = word2vecTrain(cleanedDataMatrix3,1,100)
 
 
