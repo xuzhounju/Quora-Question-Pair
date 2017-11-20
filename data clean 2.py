@@ -14,6 +14,8 @@ from sklearn import svm
 import numpy as np
 import time
 import re
+import copy
+from nltk.stem import SnowballStemmer
 
 def readTrainFile():
     f= open('../train.csv','rb')
@@ -58,7 +60,7 @@ def dataClean2(rawDataMatrix):
 
 
 
-def cleartext(text):
+def cleartext(text,stem_words=False):
     text = re.sub(r"[^A-Za-z0-9^,!.\/'+-=]", " ", text)
     text = re.sub(r"what's", "what is ", text)
     text = re.sub(r"\'s", " ", text)
@@ -88,6 +90,11 @@ def cleartext(text):
     text = re.sub(r"e - mail", "email", text)
     text = re.sub(r"j k", "jk", text)
     text = re.sub(r"\s{2,}", " ", text)
+    if stem_words:
+        text = text.split()
+        stemmer = SnowballStemmer('english')
+        stemmed_words = [stemmer.stem(word) for word in text]
+        text = " ".join(stemmed_words)
     return text
         
 
@@ -112,7 +119,7 @@ def word2vecTrain(rawDataMatrix,count,dimension):
     end=time.time()
     print "finish the building, time took:",end-start
     return model
-    
+
 
 def dictAllWords(rawDataMatrix):
     allWords=defaultdict(float)
@@ -121,6 +128,14 @@ def dictAllWords(rawDataMatrix):
             allWords[word]+=1.0
         for word in pair[4]:
             allWords[word]+=1.0
+
+def wordMatchShare(Q1,Q2,model):
+    shareNum= 0.0
+    for word in Q1:
+        if word in Q2:
+            shareNum+=1.0
+    return shareNum/(len(Q1)+len(Q2))
+        
     
 
 def baselineCosineSimilarity(Q1,Q2,model):
@@ -159,10 +174,10 @@ def avgPerceptronTrain(example,r,numpass,cosineSimilarity,model):
     t=1.0
     theta=0.5
     s=0.0
-    count = 100000*numpass
+    #count = 100000*numpass
     for pair in example:
-        if (t-1)%count==0:
-            print 'trained ', (t-1)/count,'*100k pairs'
+        #if (t-1)%count==0:
+        #    print 'trained ', (t-1)/count,'*100k pairs'
         gold = int(pair[-1])
         for iteration in range(numpass):
             if cosineSimilarity(pair[3],pair[4],model)>theta:
@@ -179,13 +194,16 @@ def avgPerceptronTrain(example,r,numpass,cosineSimilarity,model):
 def word2vecSentence2Vec(a,b,model):
     sentenceA = a
     sentenceB = b
-    vectorA =np.copy(model[sentenceA[0]])
-    vectorB =np.copy( model[sentenceB[0]]) 
-    for word in sentenceA[1:]:
-        vectorA += model[word]
-    for word in sentenceB[1:]:
-        vectorB += model[word]
-    return vectorA/len(vectorA),vectorB/len(vectorB)
+    if len(a)!=0 and len(b)!=0:
+        vectorA =np.copy(model[sentenceA[0]])
+        vectorB =np.copy( model[sentenceB[0]]) 
+        for word in sentenceA[1:]:
+            vectorA += model[word]
+        for word in sentenceB[1:]:
+            vectorB += model[word]
+        return vectorA/len(a),vectorB/len(b)
+    else:
+        return [0.0]*len(model['bad']),[1.0]*len(model['bad'])
 
 #def word2vecSVMTrain(rawDataMatrix,model):
 #    num=0
@@ -212,12 +230,12 @@ def validation(example,theta,cosineSimilarity,model):
     print 'start validation...'
     num= 0.0 
     total = len(example)
-    count = 0
+    #count = 0
     for pair in example:
-        count+=1
+        #count+=1
         gold = int(pair[-1])
-        if count % 100000 == 0:
-            print 'tested ', count/100000,'*100k pairs'
+        #if count % 100000 == 0:
+        #   print 'tested ', count/100000,'*100k pairs'
         if cosineSimilarity(pair[3],pair[4],model)>theta:
             predict = 1.0
         else:
@@ -263,46 +281,111 @@ def test(example,theta):
         writer.writerow(i)
     f.close()
     
-            
 
 rawDataMatrix =  readTrainFile()
-rawDataMatrix_copy = []
-for pair in rawDataMatrix:
-    rawDataMatrix_copy.append(pair)
 
-print len(rawDataMatrix)
-model=word2vecTrain(rawDataMatrix,1,100)
-#clf = word2vecSVMTrain(rawDataMatrix,model)
-#word2vecSVMValidation(rawDataMatrix,clf,model)
+rawDataMatrix_copy = copy.deepcopy(rawDataMatrix)
+rawDataMatrix_copy2 = copy.deepcopy(rawDataMatrix)
+rawDataMatrix_copy3 = copy.deepcopy(rawDataMatrix)
 
-
-threthod1 =avgPerceptronTrain(rawDataMatrix,0.1,10,baselineCosineSimilarity,model)
-validation(rawDataMatrix,threthod1,baselineCosineSimilarity,model)
-
-threthod2 = avgPerceptronTrain(rawDataMatrix,0.1,10,word2vecCosineSimilarity,model)
-validation(rawDataMatrix,threthod2,word2vecCosineSimilarity,model)
-
-
-cleanedDataMatrix = dataClean(rawDataMatrix)
-model2 = word2vecTrain(cleanedDataMatrix,1,100)
-
-threthod3 = avgPerceptronTrain(cleanedDataMatrix,0.1,10,baselineCosineSimilarity,model2)
-validation(cleanedDataMatrix,threthod3,baselineCosineSimilarity,model2)
-
-threthod4 = avgPerceptronTrain(cleanedDataMatrix,0.1,10,word2vecCosineSimilarity,model2)
-validation(cleanedDataMatrix,threthod4,word2vecCosineSimilarity,model2)
-
-
-
+model=word2vecTrain(rawDataMatrix,1,50)
+cleanedDataMatrix = dataClean(rawDataMatrix_copy2)
+model2 = word2vecTrain(cleanedDataMatrix,1,50)
 cleanedDataMatrix2 = dataClean2(rawDataMatrix_copy)
-model3 = word2vecTrain(cleanedDataMatrix2,1,100)
+model3 = word2vecTrain(cleanedDataMatrix2,1,50)
+cleanedDataMatrix3 = dataClean2(rawDataMatrix_copy3,True)
+model4 = word2vecTrain(cleanedDataMatrix3,1,50)
 
-threthod5 = avgPerceptronTrain(cleanedDataMatrix2,0.1,10,baselineCosineSimilarity,model3)
-validation(cleanedDataMatrix,threthod5,baselineCosineSimilarity,model3)
 
-threthod6 = avgPerceptronTrain(cleanedDataMatrix2,0.1,10,word2vecCosineSimilarity,model3)
-validation(cleanedDataMatrix,threthod6,word2vecCosineSimilarity,model3)
+for r in [0.05,0.1,0.2 ,0.3,0.4]:
+    print "******************************************************"
+    print "learning rate:",r
 
+        
+    print len(rawDataMatrix)
+    print "................raw data ....................."
+    
+    #clf = word2vecSVMTrain(rawDataMatrix,model)
+    #word2vecSVMValidation(rawDataMatrix,clf,model)
+    
+    
+    print "dict cosine similarity:"
+    threthod1 =avgPerceptronTrain(rawDataMatrix,r,10,baselineCosineSimilarity,model)
+    validation(rawDataMatrix,threthod1,baselineCosineSimilarity,model)
+    
+    print '........................................................'
+    print "word2vec cosine similarity:"
+    threthod2 = avgPerceptronTrain(rawDataMatrix,r,10,word2vecCosineSimilarity,model)
+    validation(rawDataMatrix,threthod2,word2vecCosineSimilarity,model)
+    
+    print '........................................................'
+    print "word match share:"
+    threthodA = avgPerceptronTrain(rawDataMatrix,r,10,wordMatchShare,model)
+    validation(rawDataMatrix,threthodA,wordMatchShare,model)
+    
+    
+    print ".................cleaned data version 1.............."
+
+    print "dict cosine similarity:"
+    
+    threthod3 = avgPerceptronTrain(cleanedDataMatrix,r,10,baselineCosineSimilarity,model2)
+    validation(cleanedDataMatrix,threthod3,baselineCosineSimilarity,model2)
+    print '........................................................'
+
+    print "word2vec cosine similarity:"
+    
+    threthod4 = avgPerceptronTrain(cleanedDataMatrix,r,10,word2vecCosineSimilarity,model2)
+    validation(cleanedDataMatrix,threthod4,word2vecCosineSimilarity,model2)
+    
+    print '........................................................'
+    print "word match share:"
+    threthodB = avgPerceptronTrain(cleanedDataMatrix,r,10,wordMatchShare,model2)
+    validation(cleanedDataMatrix,threthodB,wordMatchShare,model2)
+    
+    
+    print ".................cleaned data version 2.............."
+    
+   
+    print "dict cosine similarity:"
+    
+    threthod5 = avgPerceptronTrain(cleanedDataMatrix2,r,10,baselineCosineSimilarity,model3)
+    validation(cleanedDataMatrix,threthod5,baselineCosineSimilarity,model3)
+    
+    print '........................................................'
+
+    print "word2vec cosine similarity:"
+    
+    threthod6 = avgPerceptronTrain(cleanedDataMatrix2,r,10,word2vecCosineSimilarity,model3)
+    validation(cleanedDataMatrix,threthod6,word2vecCosineSimilarity,model3)
+    
+    print '........................................................'
+    print "word match share:"
+    threthodC = avgPerceptronTrain(cleanedDataMatrix2,r,10,wordMatchShare,model3)
+    validation(cleanedDataMatrix2,threthodC,wordMatchShare,model3)
+    
+    
+    
+    
+    print ".................cleaned data version 3.............."
+    
+   
+    print "dict cosine similarity:"
+    
+    threthod7 = avgPerceptronTrain(cleanedDataMatrix2,r,10,baselineCosineSimilarity,model3)
+    validation(cleanedDataMatrix,threthod5,baselineCosineSimilarity,model3)
+    
+    print '........................................................'
+
+    print "word2vec cosine similarity:"
+    
+    threthod8 = avgPerceptronTrain(cleanedDataMatrix3,r,10,word2vecCosineSimilarity,model4)
+    validation(cleanedDataMatrix,threthod6,word2vecCosineSimilarity,model4)
+    
+    print '........................................................'
+    print "word match share:"
+    threthodD = avgPerceptronTrain(cleanedDataMatrix3,r,10,wordMatchShare,model4)
+    validation(cleanedDataMatrix3,threthodD,wordMatchShare,model4)
+    
 
 #testData = readTestFile()
 #result = test(testData,threthod)
