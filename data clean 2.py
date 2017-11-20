@@ -293,7 +293,7 @@ cleanedDataMatrix = dataClean(rawDataMatrix_copy2)
 model2 = word2vecTrain(cleanedDataMatrix,1,100)
 cleanedDataMatrix2 = dataClean2(rawDataMatrix_copy)
 model3 = word2vecTrain(cleanedDataMatrix2,1,100)
-cleanedDataMatrix3 = dataClean2(rawDataMatrix_copy3,stem_words=True)
+cleanedDataMatrix3 = dataClean2(rawDataMatrix_copy3,stem_word=True)
 model4 = word2vecTrain(cleanedDataMatrix3,1,100)
 
 
