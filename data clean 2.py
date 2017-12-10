@@ -288,16 +288,16 @@ rawDataMatrix_copy = copy.deepcopy(rawDataMatrix)
 rawDataMatrix_copy2 = copy.deepcopy(rawDataMatrix)
 rawDataMatrix_copy3 = copy.deepcopy(rawDataMatrix)
 
-model=word2vecTrain(rawDataMatrix,1,50)
+model=word2vecTrain(rawDataMatrix,1,200)
 cleanedDataMatrix = dataClean(rawDataMatrix_copy2)
-model2 = word2vecTrain(cleanedDataMatrix,1,100)
+model2 = word2vecTrain(cleanedDataMatrix,1,200)
 cleanedDataMatrix2 = dataClean2(rawDataMatrix_copy)
-model3 = word2vecTrain(cleanedDataMatrix2,1,100)
+model3 = word2vecTrain(cleanedDataMatrix2,1,200)
 cleanedDataMatrix3 = dataClean2(rawDataMatrix_copy3,stem_word=True)
-model4 = word2vecTrain(cleanedDataMatrix3,1,100)
+model4 = word2vecTrain(cleanedDataMatrix3,1,200)
 
 
-for r in [0.05,0.1,0.2 ,0.3,0.4]:
+for r in [0.05]:
     print "******************************************************"
     print "learning rate:",r
 
